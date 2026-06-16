@@ -10,7 +10,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,11 +26,9 @@ public class HealthRecordServiceImpl implements HealthRecordService {
     @Override
     @Transactional
     public HealthRecordDTO registrarToma(String numeroDocumento, HealthRecordDTO dto) {
-        // 1. Buscar al empleado al que le vamos a registrar la salud
         Employee empleado = employeeRepository.findByNumeroDocumento(numeroDocumento)
                 .orElseThrow(() -> new RuntimeException("Empleado no encontrado con documento: " + numeroDocumento));
 
-        // 2. Construir la entidad con los datos que vienen del frontend/Postman
         HealthRecord nuevoRegistro = HealthRecord.builder()
                 .empleado(empleado)
                 .fechaToma(LocalDateTime.now()) // Ponemos la fecha exacta del servidor automáticamente
@@ -40,10 +40,8 @@ public class HealthRecordServiceImpl implements HealthRecordService {
                 .estatura(dto.estatura())
                 .build();
 
-        // 3. Guardar en Base de Datos
         HealthRecord registroGuardado = healthRecordRepository.save(nuevoRegistro);
 
-        // 4. Devolver como DTO (Aquí se calculan mágicamente el IMC y las alertas gracias a los @Transient)
         return mapToDTO(registroGuardado);
     }
 
@@ -53,16 +51,33 @@ public class HealthRecordServiceImpl implements HealthRecordService {
         Employee empleado = employeeRepository.findByNumeroDocumento(numeroDocumento)
                 .orElseThrow(() -> new RuntimeException("Empleado no encontrado"));
 
-        // Usamos el método que creamos en el repositorio para traerlos ordenados
         List<HealthRecord> historial = healthRecordRepository.findByEmpleadoIdOrderByFechaTomaDesc(empleado.getId());
 
-        // Convertimos la lista de Entidades a una lista de DTOs usando Streams de Java
         return historial.stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
-    // Método auxiliar de mapeo
+    @Override
+    public List<HealthRecord> obtenerRegistrosPorFecha(LocalDate fecha) {
+        LocalDateTime inicioDia = fecha.atStartOfDay(); // 2026-05-15T00:00:00
+        LocalDateTime finDia = fecha.atTime(LocalTime.MAX); // 2026-05-15T23:59:59.999999999
+
+        return healthRecordRepository.findByFechaTomaBetween(inicioDia, finDia);
+    }
+
+    @Override
+    public List<HealthRecord> obtenerEntidadesPorDocumento(String numeroDocumento) {
+        return healthRecordRepository.findByEmpleado_NumeroDocumentoOrderByFechaTomaAsc(numeroDocumento);
+    }
+
+    @Override
+    public List<HealthRecord> obtenerRegistrosPorRango(LocalDate fechaInicio, LocalDate fechaFin) {
+        LocalDateTime inicio = fechaInicio.atStartOfDay();
+        LocalDateTime fin = fechaFin.atTime(LocalTime.MAX);
+        return healthRecordRepository.findByFechaTomaBetween(inicio, fin);
+    }
+
     private HealthRecordDTO mapToDTO(HealthRecord registro) {
         return new HealthRecordDTO(
                 registro.getId(),
